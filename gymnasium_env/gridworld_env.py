@@ -15,10 +15,13 @@ except ImportError:
 class GridWorldEnv(gym.Env):
     metadata = {"render_modes": ["human"], "render_fps": 30}
 
-    def __init__(self, size=30, render_mode=None, max_steps=None):
+    def __init__(self, size=30, render_mode=None, max_steps=None, show_path=False):
         super().__init__()
         self.size = int(size)
         self.render_mode = render_mode
+
+        # ✅ NEW: path drawing is optional (default False)
+        self.show_path = bool(show_path)
 
         # channel0=agent, channel1=goal, channel2=static obstacles
         self.observation_space = spaces.Box(
@@ -26,6 +29,7 @@ class GridWorldEnv(gym.Env):
         )
         self.action_space = spaces.Discrete(4)
 
+        # Keep these EXACTLY as your current environment uses
         self.start_pos = (0, 0)
         self.goal_pos = (self.size - 1, self.size - 1)
 
@@ -38,7 +42,7 @@ class GridWorldEnv(gym.Env):
 
         self.agent_pos = self.start_pos
 
-        # ✅ visited cells for blue-dot path visualization
+        # ✅ visited cells for blue dots (used only if show_path=True)
         self.visited_cells = set()
 
         # pygame
@@ -68,8 +72,9 @@ class GridWorldEnv(gym.Env):
 
     def _static_obstacles_like_figure(self):
         """
-        Static-only, organized blocks similar to your reference.
-        (If you want EXACT obstacle coordinates from the image, you must provide the 30x30 obstacle list or matrix.)
+        IMPORTANT:
+        If you want graphs to remain comparable, DO NOT change this obstacle map.
+        Dots are visual-only now and won't affect training.
         """
         obs = set()
 
@@ -121,8 +126,11 @@ class GridWorldEnv(gym.Env):
         self.steps = 0
         self.agent_pos = self.start_pos
 
-        # ✅ reset visited path
-        self.visited_cells = {self.start_pos}
+        # ✅ Only track visited path when show_path is enabled
+        if self.show_path:
+            self.visited_cells = {self.start_pos}
+        else:
+            self.visited_cells = set()
 
         obs = self._get_obs()
         if self.render_mode == "human":
@@ -152,14 +160,16 @@ class GridWorldEnv(gym.Env):
 
         self.agent_pos = cand
 
-        # ✅ add to visited after moving (or staying)
-        self.visited_cells.add(self.agent_pos)
+        # ✅ Add a dot only when show_path=True (PLAY mode)
+        if self.show_path:
+            self.visited_cells.add(self.agent_pos)
 
         new_dist = self._manhattan(self.agent_pos, self.goal_pos)
 
         terminated = (self.agent_pos == self.goal_pos)
         truncated = (self.steps >= self.max_steps)
 
+        # reward shaping (unchanged)
         if terminated:
             reward = 150.0
         else:
@@ -187,7 +197,7 @@ class GridWorldEnv(gym.Env):
             pygame.init()
             pygame.display.init()
             self.screen = pygame.display.set_mode((self.window_size, self.window_size))
-            pygame.display.set_caption("GridWorld 30x30 (Static Only) - Blue Dot Path")
+            pygame.display.set_caption("GridWorld 30x30 (Static Only)")
             self.clock = pygame.time.Clock()
 
         for event in pygame.event.get():
@@ -198,18 +208,19 @@ class GridWorldEnv(gym.Env):
         self.screen.fill((255, 255, 255))
         cell = self.window_size // self.size
 
-        # static obstacles (black)
+        # obstacles (black)
         for (rr, cc) in self.static_obstacles:
             pygame.draw.rect(self.screen, (0, 0, 0), pygame.Rect(cc * cell, rr * cell, cell, cell))
 
-        # ✅ visited path (light-blue dots)
-        for (pr, pc) in self.visited_cells:
-            if (pr, pc) == self.start_pos or (pr, pc) == self.goal_pos:
-                continue
-            cx = pc * cell + cell // 2
-            cy = pr * cell + cell // 2
-            radius = max(2, cell // 6)
-            pygame.draw.circle(self.screen, (100, 200, 255), (cx, cy), radius)
+        # ✅ visited path dots (ONLY in play mode)
+        if self.show_path:
+            for (pr, pc) in self.visited_cells:
+                if (pr, pc) == self.start_pos or (pr, pc) == self.goal_pos:
+                    continue
+                cx = pc * cell + cell // 2
+                cy = pr * cell + cell // 2
+                radius = max(2, cell // 6)
+                pygame.draw.circle(self.screen, (100, 200, 255), (cx, cy), radius)
 
         # start (orange)
         sr, sc = self.start_pos
