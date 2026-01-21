@@ -30,7 +30,14 @@ def main():
     model_file = "fast_dqn_static_30.pt"
     max_steps = 600
 
-    env = gym.make("gymnasium_env/GridWorld-v0", size=size, render_mode="human", max_steps=max_steps)
+    # ✅ show_path=True only for play
+    env = gym.make(
+        "gymnasium_env/GridWorld-v0",
+        size=size,
+        render_mode="human",
+        max_steps=max_steps,
+        show_path=True
+    )
 
     obs0, _ = env.reset()
     obs_dim = obs0.size
@@ -56,7 +63,6 @@ def main():
         action = int(np.argmax(q))
         obs, reward, terminated, truncated, _ = env.step(action)
 
-        # after each step, render will draw the new blue dot automatically
         time.sleep(0.06)
 
     print(f"Done. steps={steps}, terminated={terminated}, truncated={truncated}")
