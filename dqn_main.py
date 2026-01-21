@@ -101,7 +101,6 @@ def train_fast_dqn(
 
     buffer = ReplayBuffer(capacity=buffer_capacity)
 
-    # logs
     episode_rewards = []
     episode_success = []
     episode_static_collisions = []
@@ -113,7 +112,7 @@ def train_fast_dqn(
     step_count = 0
     success_window = deque(maxlen=100)
 
-    print("🏋️ FAST DQN training (STATIC obstacles only) started...", flush=True)
+    print("🏋️ FAST DQN training (STATIC ONLY) started...", flush=True)
 
     for ep in range(episodes):
         obs, _ = env.reset()
@@ -135,7 +134,6 @@ def train_fast_dqn(
                     action = int(torch.argmax(q).item())
 
             obs2, reward, terminated, truncated, info = env.step(action)
-
             if info.get("hit_static", False):
                 static_hits += 1
 
@@ -187,8 +185,7 @@ def train_fast_dqn(
         if (ep + 1) % 50 == 0:
             sr = sum(success_window) / len(success_window)
             print(
-                f"Ep {ep+1}/{episodes} | R {ep_reward:.1f} | eps {epsilon:.3f} | succ100 {sr:.2f} "
-                f"| staticHit {static_hits}",
+                f"Ep {ep+1}/{episodes} | R {ep_reward:.1f} | eps {epsilon:.3f} | succ100 {sr:.2f} | staticHit {static_hits}",
                 flush=True
             )
 
@@ -197,9 +194,8 @@ def train_fast_dqn(
     print(f"✅ Training finished. Saved model to: {model_path}", flush=True)
 
     # plots
-    ma_r = moving_average(episode_rewards, 100)
     plt.figure()
-    plt.plot(ma_r)
+    plt.plot(moving_average(episode_rewards, 100))
     plt.title("Reward (moving average, window=100)")
     plt.xlabel("Episode")
     plt.ylabel("Reward")
@@ -207,9 +203,8 @@ def train_fast_dqn(
     plt.savefig("learning_reward.png", dpi=200)
     plt.close()
 
-    ma_s = moving_average(episode_success, 100)
     plt.figure()
-    plt.plot(ma_s)
+    plt.plot(moving_average(episode_success, 100))
     plt.title("Success Rate (moving average, window=100)")
     plt.xlabel("Episode")
     plt.ylabel("Success Rate")
@@ -218,9 +213,8 @@ def train_fast_dqn(
     plt.savefig("learning_success.png", dpi=200)
     plt.close()
 
-    ma_static = moving_average(episode_static_collisions, 100)
     plt.figure()
-    plt.plot(ma_static)
+    plt.plot(moving_average(episode_static_collisions, 100))
     plt.title("Static Collisions vs Episodes (moving average, window=100)")
     plt.xlabel("Episode")
     plt.ylabel("Static collisions per episode")
