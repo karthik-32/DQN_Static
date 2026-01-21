@@ -41,7 +41,7 @@ class GridWorldEnv(gym.Env):
         self.visited_cells = set()
 
         # pygame
-        self.window_size = 750
+        self.window_size = 720
         self.screen = None
         self.clock = None
 
@@ -103,6 +103,13 @@ class GridWorldEnv(gym.Env):
 
         obs.discard((self.size - 1, self.size - 2))
         obs.discard((self.size - 2, self.size - 1))
+
+        cells_to_remove = [
+        (1, 2), (1, 3), (1, 4),
+        (2, 2), (2, 3), (2, 4),
+        ]
+        for cell in cells_to_remove:
+            obs.discard(cell)
 
         return obs
 
