@@ -70,7 +70,6 @@ def train_fast_dqn(
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Device:", device, flush=True)
 
-    # FAST settings
     max_steps = 600
     train_every = 8
     batch_size = 64
@@ -83,7 +82,14 @@ def train_fast_dqn(
     epsilon_min = 0.05
     epsilon_decay = 0.9993
 
-    env = gym.make("gymnasium_env/GridWorld-v0", size=size, render_mode=None, max_steps=max_steps)
+    # ✅ IMPORTANT: show_path=False during training to avoid any effect
+    env = gym.make(
+        "gymnasium_env/GridWorld-v0",
+        size=size,
+        render_mode=None,
+        max_steps=max_steps,
+        show_path=False
+    )
 
     obs0, _ = env.reset()
     if not hasattr(obs0, "shape"):
