@@ -41,7 +41,7 @@ def main():
     model.eval()
 
     obs, _ = env.reset()
-    time.sleep(1)
+    time.sleep(0.5)
 
     terminated = truncated = False
     steps = 0
@@ -55,6 +55,8 @@ def main():
 
         action = int(np.argmax(q))
         obs, reward, terminated, truncated, _ = env.step(action)
+
+        # after each step, render will draw the new blue dot automatically
         time.sleep(0.06)
 
     print(f"Done. steps={steps}, terminated={terminated}, truncated={truncated}")
