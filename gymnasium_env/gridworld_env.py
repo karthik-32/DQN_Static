@@ -15,21 +15,16 @@ except ImportError:
 class GridWorldEnv(gym.Env):
     metadata = {"render_modes": ["human"], "render_fps": 30}
 
-    def __init__(self, size=30, render_mode=None, max_steps=None, show_path=False):
+    def __init__(self, size=30, render_mode=None, max_steps=None):
         super().__init__()
         self.size = int(size)
         self.render_mode = render_mode
 
-        # ✅ NEW: path drawing is optional (default False)
-        self.show_path = bool(show_path)
-
-        # channel0=agent, channel1=goal, channel2=static obstacles
         self.observation_space = spaces.Box(
             low=0.0, high=1.0, shape=(3, self.size, self.size), dtype=np.float32
         )
         self.action_space = spaces.Discrete(4)
 
-        # Keep these EXACTLY as your current environment uses
         self.start_pos = (0, 0)
         self.goal_pos = (self.size - 1, self.size - 1)
 
@@ -42,7 +37,7 @@ class GridWorldEnv(gym.Env):
 
         self.agent_pos = self.start_pos
 
-        # ✅ visited cells for blue dots (used only if show_path=True)
+        # ✅ NEW: store visited cells for blue dots (only used when rendering)
         self.visited_cells = set()
 
         # pygame
@@ -50,7 +45,6 @@ class GridWorldEnv(gym.Env):
         self.screen = None
         self.clock = None
 
-    # ---------- helpers ----------
     def _manhattan(self, a, b):
         return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
@@ -71,11 +65,6 @@ class GridWorldEnv(gym.Env):
                     out.add((r, c))
 
     def _static_obstacles_like_figure(self):
-        """
-        IMPORTANT:
-        If you want graphs to remain comparable, DO NOT change this obstacle map.
-        Dots are visual-only now and won't affect training.
-        """
         obs = set()
 
         self._add_rect(obs, 1, 5, 2, 4)
@@ -104,33 +93,26 @@ class GridWorldEnv(gym.Env):
         self._add_rect(obs, 25, 26, 18, 19)
         self._add_rect(obs, 27, 27, 23, 25)
 
-        # horizontal barrier with gaps
         for c in range(0, self.size):
             if c not in (5, 6, 14, 15, 27):
                 obs.add((16, c))
 
-        # keep start corridor open
         obs.discard((0, 1))
         obs.discard((1, 0))
         obs.discard((1, 1))
 
-        # keep goal corridor open
         obs.discard((self.size - 1, self.size - 2))
         obs.discard((self.size - 2, self.size - 1))
 
         return obs
 
-    # ---------- gym API ----------
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.steps = 0
         self.agent_pos = self.start_pos
 
-        # ✅ Only track visited path when show_path is enabled
-        if self.show_path:
-            self.visited_cells = {self.start_pos}
-        else:
-            self.visited_cells = set()
+        # ✅ NEW: reset visited path each episode
+        self.visited_cells = {self.start_pos}
 
         obs = self._get_obs()
         if self.render_mode == "human":
@@ -160,16 +142,14 @@ class GridWorldEnv(gym.Env):
 
         self.agent_pos = cand
 
-        # ✅ Add a dot only when show_path=True (PLAY mode)
-        if self.show_path:
-            self.visited_cells.add(self.agent_pos)
+        # ✅ NEW: add current position to visited
+        self.visited_cells.add(self.agent_pos)
 
         new_dist = self._manhattan(self.agent_pos, self.goal_pos)
 
         terminated = (self.agent_pos == self.goal_pos)
         truncated = (self.steps >= self.max_steps)
 
-        # reward shaping (unchanged)
         if terminated:
             reward = 150.0
         else:
@@ -188,7 +168,6 @@ class GridWorldEnv(gym.Env):
         info = {"hit_static": bool(hit_static)}
         return obs, reward, terminated, truncated, info
 
-    # ---------- render ----------
     def render(self):
         if pygame is None:
             raise ImportError("pygame not installed. Install: pip install pygame-ce")
@@ -197,7 +176,7 @@ class GridWorldEnv(gym.Env):
             pygame.init()
             pygame.display.init()
             self.screen = pygame.display.set_mode((self.window_size, self.window_size))
-            pygame.display.set_caption("GridWorld 30x30 (Static Only)")
+            pygame.display.set_caption("GridWorld 30x30 (Static Obstacles Only)")
             self.clock = pygame.time.Clock()
 
         for event in pygame.event.get():
@@ -210,17 +189,20 @@ class GridWorldEnv(gym.Env):
 
         # obstacles (black)
         for (rr, cc) in self.static_obstacles:
-            pygame.draw.rect(self.screen, (0, 0, 0), pygame.Rect(cc * cell, rr * cell, cell, cell))
+            pygame.draw.rect(
+                self.screen,
+                (0, 0, 0),
+                pygame.Rect(cc * cell, rr * cell, cell, cell)
+            )
 
-        # ✅ visited path dots (ONLY in play mode)
-        if self.show_path:
-            for (pr, pc) in self.visited_cells:
-                if (pr, pc) == self.start_pos or (pr, pc) == self.goal_pos:
-                    continue
-                cx = pc * cell + cell // 2
-                cy = pr * cell + cell // 2
-                radius = max(2, cell // 6)
-                pygame.draw.circle(self.screen, (100, 200, 255), (cx, cy), radius)
+        # ✅ NEW: draw visited path as light-blue dots
+        for (pr, pc) in self.visited_cells:
+            if (pr, pc) == self.start_pos or (pr, pc) == self.goal_pos:
+                continue
+            cx = pc * cell + cell // 2
+            cy = pr * cell + cell // 2
+            radius = max(2, cell // 6)
+            pygame.draw.circle(self.screen, (100, 200, 255), (cx, cy), radius)
 
         # start (orange)
         sr, sc = self.start_pos
