@@ -30,14 +30,7 @@ def main():
     model_file = "fast_dqn_static_30.pt"
     max_steps = 600
 
-    # ✅ show_path=True only for play
-    env = gym.make(
-        "gymnasium_env/GridWorld-v0",
-        size=size,
-        render_mode="human",
-        max_steps=max_steps,
-        show_path=True
-    )
+    env = gym.make("gymnasium_env/GridWorld-v0", size=size, render_mode="human", max_steps=max_steps)
 
     obs0, _ = env.reset()
     obs_dim = obs0.size
@@ -48,7 +41,7 @@ def main():
     model.eval()
 
     obs, _ = env.reset()
-    time.sleep(0.5)
+    time.sleep(1)
 
     terminated = truncated = False
     steps = 0
@@ -62,7 +55,6 @@ def main():
 
         action = int(np.argmax(q))
         obs, reward, terminated, truncated, _ = env.step(action)
-
         time.sleep(0.06)
 
     print(f"Done. steps={steps}, terminated={terminated}, truncated={truncated}")
