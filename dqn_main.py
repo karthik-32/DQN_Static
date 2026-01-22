@@ -36,7 +36,7 @@ class ReplayBuffer:
 
 
 class DQN(nn.Module):
-    def __init__(self, obs_dim: int, n_actions: int, hidden=128):
+    def __init__(self, obs_dim: int, n_actions: int, hidden=64):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(obs_dim, hidden),
@@ -71,17 +71,17 @@ def train_fast_dqn(
     print("Device:", device, flush=True)
 
     # FAST settings
-    max_steps = 450
-    train_every = 4
+    max_steps = 250
+    train_every = 32
     batch_size = 128
-    warmup = 300
-    buffer_capacity = 40_000
-    target_update_steps = 300
+    warmup = 1000
+    buffer_capacity = 80_000
+    target_update_steps = 800
 
     gamma = 0.99
     epsilon = 1.0
     epsilon_min = 0.05
-    epsilon_decay = 0.9985
+    epsilon_decay = 0.9996
 
     env = gym.make("gymnasium_env/GridWorld-v0", size=size, render_mode=None, max_steps=max_steps)
 
@@ -235,4 +235,5 @@ def train_fast_dqn(
 
 if __name__ == "__main__":
     train_fast_dqn()
+
 
