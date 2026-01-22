@@ -173,6 +173,12 @@ def main():
     # Simulation state
     running = False
     in_metrics = False
+    
+    # ✅ obstacle edit mode (SPACE toggles)
+    edit_mode = False
+    new_obstacles = set()   # obstacles added during play (grey)
+    
+
 
     obs, _ = env.reset()
     steps = 0
@@ -217,6 +223,24 @@ def main():
                     total_infer_time = 0.0
                     visited = {base_env.start_pos}
 
+                # ✅ place obstacle by clicking grid cell (only if edit_mode is ON)
+                if edit_mode:
+                    mx, my = event.pos
+                    # only if click is inside grid area (not the right panel)
+                    if mx < grid_px and my < grid_px:
+                        cell_size = grid_px // size
+                        c = mx // cell_size
+                        r = my // cell_size
+                        cell = (int(r), int(c))
+                        # avoid placing on start, goal, or agent
+                        if cell != base_env.start_pos and cell != base_env.goal_pos and cell != base_env.agent_pos:
+                            # add obstacle to env + to local set (for grey rendering)
+                            base_env.static_obstacles.add(cell)
+                            new_obstacles.add(cell)
+
+
+                
+
                 if start_btn.clicked(event.pos):
                     running = not running
                     if running and sim_start_time is None:
@@ -224,6 +248,11 @@ def main():
 
                 if show_metrics_btn.clicked(event.pos):
                     in_metrics = True
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
+                    edit_mode = not edit_mode
+
 
             anim_slider.handle_event(event)
 
@@ -345,3 +374,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
