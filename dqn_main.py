@@ -94,7 +94,7 @@ def train_fast_dqn(
         render_mode=None,
         max_steps=max_steps,
         random_obstacles=random_obstacles,   # requires your env to support this
-        obstacle_seed=None,                  # different each episode
+        random_obstacle_seed=42,
     )
 
     obs0, _ = env.reset()
@@ -271,3 +271,4 @@ def train_fast_dqn(
 
 if __name__ == "__main__":
     train_fast_dqn()
+
