@@ -198,18 +198,18 @@ class GridWorldEnv(gym.Env):
         # If action changes from previous action → small penalty
         turn_penalty = 0.0
         if self.prev_action is not None and action != self.prev_action:
-            turn_penalty = 0.15  # tune: 0.05 to 0.30
+            turn_penalty = 0.08  # tune: 0.05 to 0.30
         self.prev_action = action
 
         # Reward shaping
         if terminated:
             reward = 150.0
         else:
-            reward = -0.1
+            reward = -0.02
 
             # collision penalty
             if hit_static:
-                reward -= 2.0
+                reward -= 1.0
 
             # distance shaping
             if new_dist < prev_dist:
@@ -218,7 +218,7 @@ class GridWorldEnv(gym.Env):
                 reward -= 0.25
 
             # apply turn penalty
-            reward -= turn_penalty
+            reward -= turn_penalty*0.5
 
         obs = self._get_obs()
         if self.render_mode == "human":
@@ -298,3 +298,4 @@ class GridWorldEnv(gym.Env):
             pygame.quit()
         self.screen = None
         self.clock = None
+
