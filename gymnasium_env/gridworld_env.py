@@ -20,7 +20,7 @@ class GridWorldEnv(gym.Env):
         self.size = int(size)
         self.render_mode = render_mode
 
-        # ✅ smaller UI (so not hidden behind taskbar)
+        # ✅ smaller UI
         self.window_size = 600
 
         # Observation: (3, size, size)
@@ -28,7 +28,10 @@ class GridWorldEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=0.0, high=1.0, shape=(3, self.size, self.size), dtype=np.float32
         )
-        self.action_space = spaces.Discrete(4)
+
+        # ✅ 5 actions:
+        # 0=UP, 1=LEFT, 2=RIGHT, 3=UP-RIGHT, 4=UP-LEFT
+        self.action_space = spaces.Discrete(5)
 
         # Start & goal
         self.start_pos = (0, 0)
@@ -44,8 +47,11 @@ class GridWorldEnv(gym.Env):
 
         self.agent_pos = self.start_pos
 
-        # ✅ NEW: ordered visited path (for blue dots)
+        # ✅ ordered visited path (for blue dots)
         self.visited_cells = []
+
+        # ✅ for turn-penalty (reduce turns)
+        self.prev_action = None
 
         # pygame
         self.screen = None
@@ -78,48 +84,48 @@ class GridWorldEnv(gym.Env):
         """
         obs = set()
 
-        # ✅ Top row blocks
+        # Top row blocks
         self._add_rect(obs, 0, 2, 7, 8)
         self._add_rect(obs, 0, 2, 12, 13)
         self._add_rect(obs, 1, 3, 16, 17)
 
-        # ✅ Left vertical wall (with gaps)
+        # Left vertical wall (with gaps)
         self._add_rect(obs, 6, 12, 3, 3)
         self._add_rect(obs, 14, 20, 3, 3)
 
-        # ✅ Middle blocks
+        # Middle blocks
         self._add_rect(obs, 8, 11, 9, 11)
         self._add_rect(obs, 13, 15, 11, 13)
         self._add_rect(obs, 10, 13, 15, 16)
 
-        # ✅ Right-side blocks
+        # Right-side blocks
         self._add_rect(obs, 6, 9, 21, 23)
         self._add_rect(obs, 12, 14, 24, 26)
         self._add_rect(obs, 18, 22, 22, 24)
 
-        # ✅ Lower-middle blocks
+        # Lower-middle blocks
         self._add_rect(obs, 18, 20, 10, 12)
         self._add_rect(obs, 22, 24, 14, 16)
 
-        # ✅ Bottom-left blocks
+        # Bottom-left blocks
         self._add_rect(obs, 24, 27, 1, 2)
         self._add_rect(obs, 26, 28, 5, 6)
 
-        # ✅ Bottom scattered
+        # Bottom scattered
         self._add_rect(obs, 25, 26, 18, 19)
         self._add_rect(obs, 27, 27, 23, 25)
 
-        # ✅ horizontal barrier with gaps
+        # horizontal barrier with gaps
         for c in range(0, self.size):
             if c not in (5, 6, 14, 15, 27):
                 obs.add((16, c))
 
-        # ✅ keep start open
+        # keep start open
         obs.discard((0, 1))
         obs.discard((1, 0))
         obs.discard((1, 1))
 
-        # ✅ keep goal open
+        # keep goal open
         obs.discard((self.size - 1, self.size - 2))
         obs.discard((self.size - 2, self.size - 1))
 
@@ -139,8 +145,11 @@ class GridWorldEnv(gym.Env):
         self.steps = 0
         self.agent_pos = self.start_pos
 
-        # ✅ reset visited path
+        # reset visited path
         self.visited_cells = [self.start_pos]
+
+        # ✅ reset previous action for turn counting penalty
+        self.prev_action = None
 
         obs = self._get_obs()
         if self.render_mode == "human":
@@ -153,15 +162,21 @@ class GridWorldEnv(gym.Env):
         r, c = self.agent_pos
         prev_dist = self._manhattan(self.agent_pos, self.goal_pos)
 
+        # ✅ 5 actions:
+        # 0=UP, 1=LEFT, 2=RIGHT, 3=UP-RIGHT, 4=UP-LEFT
         nr, nc = r, c
-        if action == 0:      # up
+        if action == 0:        # UP
             nr = max(r - 1, 0)
-        elif action == 1:    # down
-            nr = min(r + 1, self.size - 1)
-        elif action == 2:    # left
+        elif action == 1:      # LEFT
             nc = max(c - 1, 0)
-        elif action == 3:    # right
+        elif action == 2:      # RIGHT
             nc = min(c + 1, self.size - 1)
+        elif action == 3:      # UP-RIGHT (diagonal)
+            nr = max(r - 1, 0)
+            nc = min(c + 1, self.size - 1)
+        elif action == 4:      # UP-LEFT (diagonal)
+            nr = max(r - 1, 0)
+            nc = max(c - 1, 0)
 
         cand = (nr, nc)
         hit_static = cand in self.static_obstacles
@@ -170,7 +185,7 @@ class GridWorldEnv(gym.Env):
 
         self.agent_pos = cand
 
-        # ✅ add to visited path if new
+        # add to visited path if moved
         if self.agent_pos != self.visited_cells[-1]:
             self.visited_cells.append(self.agent_pos)
 
@@ -179,17 +194,31 @@ class GridWorldEnv(gym.Env):
         terminated = (self.agent_pos == self.goal_pos)
         truncated = (self.steps >= self.max_steps)
 
+        # ✅ TURN PENALTY (reduces number of turns)
+        # If action changes from previous action → small penalty
+        turn_penalty = 0.0
+        if self.prev_action is not None and action != self.prev_action:
+            turn_penalty = 0.15  # tune: 0.05 to 0.30
+        self.prev_action = action
+
         # Reward shaping
         if terminated:
             reward = 150.0
         else:
             reward = -0.1
+
+            # collision penalty
             if hit_static:
                 reward -= 2.0
+
+            # distance shaping
             if new_dist < prev_dist:
                 reward += 0.35
             elif new_dist > prev_dist:
                 reward -= 0.25
+
+            # apply turn penalty
+            reward -= turn_penalty
 
         obs = self._get_obs()
         if self.render_mode == "human":
@@ -220,10 +249,12 @@ class GridWorldEnv(gym.Env):
 
         # obstacles (black)
         for (rr, cc) in self.static_obstacles:
-            pygame.draw.rect(self.screen, (0, 0, 0),
-                             pygame.Rect(cc * cell, rr * cell, cell, cell))
+            pygame.draw.rect(
+                self.screen, (0, 0, 0),
+                pygame.Rect(cc * cell, rr * cell, cell, cell)
+            )
 
-        # ✅ blue dots for visited path
+        # blue dots for visited path
         for (pr, pc) in self.visited_cells:
             if (pr, pc) == self.start_pos or (pr, pc) == self.goal_pos:
                 continue
@@ -234,25 +265,29 @@ class GridWorldEnv(gym.Env):
 
         # start (orange)
         sr, sc = self.start_pos
-        pygame.draw.rect(self.screen, (255, 165, 0),
-                         pygame.Rect(sc * cell, sr * cell, cell, cell))
+        pygame.draw.rect(
+            self.screen, (255, 165, 0),
+            pygame.Rect(sc * cell, sr * cell, cell, cell)
+        )
 
         # goal (green)
         gr, gc = self.goal_pos
-        pygame.draw.rect(self.screen, (0, 200, 0),
-                         pygame.Rect(gc * cell, gr * cell, cell, cell))
+        pygame.draw.rect(
+            self.screen, (0, 200, 0),
+            pygame.Rect(gc * cell, gr * cell, cell, cell)
+        )
 
         # agent (blue)
         ar, ac = self.agent_pos
-        pygame.draw.rect(self.screen, (0, 0, 255),
-                         pygame.Rect(ac * cell, ar * cell, cell, cell))
+        pygame.draw.rect(
+            self.screen, (0, 0, 255),
+            pygame.Rect(ac * cell, ar * cell, cell, cell)
+        )
 
         # grid lines
         for i in range(self.size + 1):
-            pygame.draw.line(self.screen, (70, 70, 70),
-                             (0, i * cell), (self.window_size, i * cell), 1)
-            pygame.draw.line(self.screen, (70, 70, 70),
-                             (i * cell, 0), (i * cell, self.window_size), 1)
+            pygame.draw.line(self.screen, (70, 70, 70), (0, i * cell), (self.window_size, i * cell), 1)
+            pygame.draw.line(self.screen, (70, 70, 70), (i * cell, 0), (i * cell, self.window_size), 1)
 
         pygame.display.flip()
         self.clock.tick(self.metadata["render_fps"])
