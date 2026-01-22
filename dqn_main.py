@@ -71,17 +71,17 @@ def train_fast_dqn(
     print("Device:", device, flush=True)
 
     # FAST settings
-    max_steps = 600
-    train_every = 8
-    batch_size = 64
-    warmup = 800
-    buffer_capacity = 60_000
-    target_update_steps = 500
+    max_steps = 450
+    train_every = 4
+    batch_size = 128
+    warmup = 300
+    buffer_capacity = 40_000
+    target_update_steps = 300
 
     gamma = 0.99
     epsilon = 1.0
     epsilon_min = 0.05
-    epsilon_decay = 0.9993
+    epsilon_decay = 0.9985
 
     env = gym.make("gymnasium_env/GridWorld-v0", size=size, render_mode=None, max_steps=max_steps)
 
@@ -235,3 +235,4 @@ def train_fast_dqn(
 
 if __name__ == "__main__":
     train_fast_dqn()
+
