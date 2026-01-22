@@ -20,7 +20,7 @@ class GridWorldEnv(gym.Env):
         self.size = int(size)
         self.render_mode = render_mode
 
-        # ✅ smaller UI
+        # UI
         self.window_size = 600
 
         # Observation: (3, size, size)
@@ -30,28 +30,28 @@ class GridWorldEnv(gym.Env):
         )
 
         # ✅ 5 actions:
-        # 0=UP, 1=LEFT, 2=RIGHT, 3=UP-RIGHT, 4=UP-LEFT
+        # 0=up, 1=left, 2=right, 3=up-right, 4=up-left
         self.action_space = spaces.Discrete(5)
 
-        # Start & goal
         self.start_pos = (0, 0)
         self.goal_pos = (self.size - 1, self.size - 1)
 
         self.steps = 0
         self.max_steps = max_steps if max_steps is not None else 600
 
-        # build static obstacles
+        # static obstacles
         self.static_obstacles = set(self._static_obstacles_like_figure())
         self.static_obstacles.discard(self.start_pos)
         self.static_obstacles.discard(self.goal_pos)
 
         self.agent_pos = self.start_pos
 
-        # ✅ ordered visited path (for blue dots)
+        # visited path (blue dots)
         self.visited_cells = []
 
-        # ✅ for turn-penalty (reduce turns)
-        self.prev_action = None
+        # ✅ anti-stuck tracking
+        self.same_pos_count = 0
+        self.max_same_pos = 12  # if stuck too long, truncate episode
 
         # pygame
         self.screen = None
@@ -72,16 +72,12 @@ class GridWorldEnv(gym.Env):
         return obs
 
     def _add_rect(self, out, r0, r1, c0, c1):
-        # inclusive ranges
         for r in range(r0, r1 + 1):
             for c in range(c0, c1 + 1):
                 if 0 <= r < self.size and 0 <= c < self.size:
                     out.add((r, c))
 
     def _static_obstacles_like_figure(self):
-        """
-        Static obstacles only, organized.
-        """
         obs = set()
 
         # Top row blocks
@@ -129,12 +125,8 @@ class GridWorldEnv(gym.Env):
         obs.discard((self.size - 1, self.size - 2))
         obs.discard((self.size - 2, self.size - 1))
 
-        # ✅ REMOVE ONLY THESE CELLS (your request)
-        cells_to_remove = [
-            (2, 3), (2, 4), (2, 5),
-            (3, 3), (3, 4), (3, 5),
-        ]
-        for cell in cells_to_remove:
+        # ✅ remove only these cells (your request)
+        for cell in [(2, 3), (2, 4), (2, 5), (3, 3), (3, 4), (3, 5)]:
             obs.discard(cell)
 
         return obs
@@ -145,11 +137,10 @@ class GridWorldEnv(gym.Env):
         self.steps = 0
         self.agent_pos = self.start_pos
 
-        # reset visited path
         self.visited_cells = [self.start_pos]
 
-        # ✅ reset previous action for turn counting penalty
-        self.prev_action = None
+        # reset stuck counters
+        self.same_pos_count = 0
 
         obs = self._get_obs()
         if self.render_mode == "human":
@@ -160,71 +151,80 @@ class GridWorldEnv(gym.Env):
         self.steps += 1
 
         r, c = self.agent_pos
+        prev_pos = self.agent_pos
         prev_dist = self._manhattan(self.agent_pos, self.goal_pos)
 
-        # ✅ 5 actions:
-        # 0=UP, 1=LEFT, 2=RIGHT, 3=UP-RIGHT, 4=UP-LEFT
+        # ✅ 5 actions
         nr, nc = r, c
-        if action == 0:        # UP
+        if action == 0:        # up
             nr = max(r - 1, 0)
-        elif action == 1:      # LEFT
+        elif action == 1:      # left
             nc = max(c - 1, 0)
-        elif action == 2:      # RIGHT
+        elif action == 2:      # right
             nc = min(c + 1, self.size - 1)
-        elif action == 3:      # UP-RIGHT (diagonal)
+        elif action == 3:      # up-right
             nr = max(r - 1, 0)
             nc = min(c + 1, self.size - 1)
-        elif action == 4:      # UP-LEFT (diagonal)
+        elif action == 4:      # up-left
             nr = max(r - 1, 0)
             nc = max(c - 1, 0)
 
         cand = (nr, nc)
+
+        # collision
         hit_static = cand in self.static_obstacles
         if hit_static:
-            cand = (r, c)
+            cand = (r, c)  # stay
 
         self.agent_pos = cand
+        new_dist = self._manhattan(self.agent_pos, self.goal_pos)
 
-        # add to visited path if moved
+        # ✅ visited path
         if self.agent_pos != self.visited_cells[-1]:
             self.visited_cells.append(self.agent_pos)
 
-        new_dist = self._manhattan(self.agent_pos, self.goal_pos)
+        # ✅ stuck detection (keeps hitting obstacle / no movement)
+        if self.agent_pos == prev_pos:
+            self.same_pos_count += 1
+        else:
+            self.same_pos_count = 0
 
         terminated = (self.agent_pos == self.goal_pos)
-        truncated = (self.steps >= self.max_steps)
 
-        # ✅ TURN PENALTY (reduces number of turns)
-        # If action changes from previous action → small penalty
-        turn_penalty = 0.0
-        if self.prev_action is not None and action != self.prev_action:
-            turn_penalty = 0.08  # tune: 0.05 to 0.30
-        self.prev_action = action
+        # ✅ truncate if too long or stuck too long
+        truncated = (self.steps >= self.max_steps) or (self.same_pos_count >= self.max_same_pos)
 
-        # Reward shaping
+        # ---------------- Reward (FAST + avoids stuck) ----------------
+        # small step cost
+        reward = -0.02
+
+        # progress shaping: reward moving closer, punish moving away
+        reward += 0.6 * (prev_dist - new_dist)
+
+        # collision penalty
+        if hit_static:
+            reward -= 1.2  # stronger than before to stop "ramming wall"
+
+        # extra penalty if stuck repeatedly
+        if self.same_pos_count > 0:
+            reward -= 0.15 * self.same_pos_count
+
+        # goal
         if terminated:
-            reward = 150.0
-        else:
-            reward = -0.02
+            reward += 50.0
 
-            # collision penalty
-            if hit_static:
-                reward -= 1.0
-
-            # distance shaping
-            if new_dist < prev_dist:
-                reward += 0.35
-            elif new_dist > prev_dist:
-                reward -= 0.25
-
-            # apply turn penalty
-            reward -= turn_penalty*0.5
+        # if truncated because stuck: stronger penalty
+        if (not terminated) and (self.same_pos_count >= self.max_same_pos):
+            reward -= 10.0
 
         obs = self._get_obs()
         if self.render_mode == "human":
             self.render()
 
-        info = {"hit_static": bool(hit_static)}
+        info = {
+            "hit_static": bool(hit_static),
+            "stuck_count": int(self.same_pos_count),
+        }
         return obs, reward, terminated, truncated, info
 
     # ---------- render ----------
@@ -247,14 +247,12 @@ class GridWorldEnv(gym.Env):
         self.screen.fill((255, 255, 255))
         cell = self.window_size // self.size
 
-        # obstacles (black)
+        # obstacles
         for (rr, cc) in self.static_obstacles:
-            pygame.draw.rect(
-                self.screen, (0, 0, 0),
-                pygame.Rect(cc * cell, rr * cell, cell, cell)
-            )
+            pygame.draw.rect(self.screen, (0, 0, 0),
+                             pygame.Rect(cc * cell, rr * cell, cell, cell))
 
-        # blue dots for visited path
+        # visited dots
         for (pr, pc) in self.visited_cells:
             if (pr, pc) == self.start_pos or (pr, pc) == self.goal_pos:
                 continue
@@ -263,31 +261,27 @@ class GridWorldEnv(gym.Env):
             radius = max(2, cell // 6)
             pygame.draw.circle(self.screen, (100, 200, 255), (cx, cy), radius)
 
-        # start (orange)
+        # start
         sr, sc = self.start_pos
-        pygame.draw.rect(
-            self.screen, (255, 165, 0),
-            pygame.Rect(sc * cell, sr * cell, cell, cell)
-        )
+        pygame.draw.rect(self.screen, (255, 165, 0),
+                         pygame.Rect(sc * cell, sr * cell, cell, cell))
 
-        # goal (green)
+        # goal
         gr, gc = self.goal_pos
-        pygame.draw.rect(
-            self.screen, (0, 200, 0),
-            pygame.Rect(gc * cell, gr * cell, cell, cell)
-        )
+        pygame.draw.rect(self.screen, (0, 200, 0),
+                         pygame.Rect(gc * cell, gr * cell, cell, cell))
 
-        # agent (blue)
+        # agent
         ar, ac = self.agent_pos
-        pygame.draw.rect(
-            self.screen, (0, 0, 255),
-            pygame.Rect(ac * cell, ar * cell, cell, cell)
-        )
+        pygame.draw.rect(self.screen, (0, 0, 255),
+                         pygame.Rect(ac * cell, ar * cell, cell, cell))
 
         # grid lines
         for i in range(self.size + 1):
-            pygame.draw.line(self.screen, (70, 70, 70), (0, i * cell), (self.window_size, i * cell), 1)
-            pygame.draw.line(self.screen, (70, 70, 70), (i * cell, 0), (i * cell, self.window_size), 1)
+            pygame.draw.line(self.screen, (70, 70, 70),
+                             (0, i * cell), (self.window_size, i * cell), 1)
+            pygame.draw.line(self.screen, (70, 70, 70),
+                             (i * cell, 0), (i * cell, self.window_size), 1)
 
         pygame.display.flip()
         self.clock.tick(self.metadata["render_fps"])
@@ -298,4 +292,3 @@ class GridWorldEnv(gym.Env):
             pygame.quit()
         self.screen = None
         self.clock = None
-
