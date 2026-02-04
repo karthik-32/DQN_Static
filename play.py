@@ -130,12 +130,12 @@ def draw_metrics_screen(screen, W, H, font_big, font, metrics_rows, back_btn):
 # ---------------- Main ----------------
 def main():
     size = 30
-    model_file = "fast_dqn_static_30.pt"  # change if your training saved a different name
+    model_file = "fast_dqn_static_30.pt"
     max_steps = 600
 
-    # IMPORTANT: render_mode=None because play.py draws everything itself
+    # IMPORTANT: do NOT use env.render_mode="human" now (we draw our own window)
     env = gym.make("gymnasium_env/GridWorld-v0", size=size, render_mode=None, max_steps=max_steps)
-    base_env = env.unwrapped  # ✅ access add_user_obstacle(), obstacles, positions
+    base_env = env.unwrapped  # access start/goal/obstacles/agent_pos
 
     obs0, _ = env.reset()
     obs_dim = obs0.size
@@ -149,7 +149,7 @@ def main():
     font = pygame.font.SysFont("Arial", 16)
     font_big = pygame.font.SysFont("Arial", 19, bold=True)
 
-    # UI sizing
+    # Compact UI sizing
     grid_px = 600
     panel_w = 260
     W = grid_px + panel_w
@@ -173,7 +173,6 @@ def main():
     # Simulation state
     running = False
     in_metrics = False
-    edit_mode = False  # ✅ space toggles this
 
     obs, _ = env.reset()
     steps = 0
@@ -186,29 +185,10 @@ def main():
     sim_end_time = None
     total_infer_time = 0.0
 
-    # Path dots
+    # Path dots (visited cells)
     visited = {base_env.start_pos}
 
     clock = pygame.time.Clock()
-
-    def do_reset():
-        nonlocal running, in_metrics, edit_mode
-        nonlocal obs, steps, turns, last_action, last_success
-        nonlocal sim_start_time, sim_end_time, total_infer_time, visited
-
-        running = False
-        in_metrics = False
-        edit_mode = False
-        base_env.clear_user_obstacles()  # ✅ clear user-added grey walls
-        obs, _ = env.reset()
-        steps = 0
-        turns = 0
-        last_action = None
-        last_success = False
-        sim_start_time = None
-        sim_end_time = None
-        total_infer_time = 0.0
-        visited = {base_env.start_pos}
 
     while True:
         # -------- handle events --------
@@ -218,11 +198,6 @@ def main():
                 pygame.quit()
                 return
 
-            # keyboard
-            if (not in_metrics) and event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE:
-                    edit_mode = not edit_mode  # ✅ toggle edit mode
-
             if in_metrics:
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if back_btn.clicked(event.pos):
@@ -230,17 +205,17 @@ def main():
                 continue
 
             if event.type == pygame.MOUSEBUTTONDOWN:
-                # click grid to add grey obstacle only in edit mode
-                mx, my = event.pos
-                if edit_mode and mx < grid_px and my < grid_px:
-                    cell = grid_px // size
-                    c = mx // cell
-                    r = my // cell
-                    base_env.add_user_obstacle((int(r), int(c)))
-                    # no env.reset here; agent should react next step
-
                 if reset_btn.clicked(event.pos):
-                    do_reset()
+                    running = False
+                    obs, _ = env.reset()
+                    steps = 0
+                    turns = 0
+                    last_action = None
+                    last_success = False
+                    sim_start_time = None
+                    sim_end_time = None
+                    total_infer_time = 0.0
+                    visited = {base_env.start_pos}
 
                 if start_btn.clicked(event.pos):
                     running = not running
@@ -268,7 +243,7 @@ def main():
                 turns += 1
             last_action = action
 
-            obs, reward, terminated, truncated, info = env.step(action)
+            obs, reward, terminated, truncated, _ = env.step(action)
             steps += 1
             visited.add(base_env.agent_pos)  # ✅ blue dot after each move
 
@@ -309,17 +284,9 @@ def main():
 
         cell = grid_px // size
 
-        # fixed static obstacles (black)
+        # obstacles (black)
         for (r, c) in getattr(base_env, "static_obstacles", set()):
             pygame.draw.rect(screen, (0, 0, 0), (c * cell, r * cell, cell, cell))
-
-        # episode random obstacles (grey) if any (training-like env may show them)
-        for (r, c) in getattr(base_env, "episode_random_obstacles", set()):
-            pygame.draw.rect(screen, (150, 150, 150), (c * cell, r * cell, cell, cell))
-
-        # user obstacles (darker grey)
-        for (r, c) in getattr(base_env, "user_obstacles", set()):
-            pygame.draw.rect(screen, (120, 120, 120), (c * cell, r * cell, cell, cell))
 
         # start (orange)
         sr, sc = base_env.start_pos
@@ -329,10 +296,8 @@ def main():
         gr, gc = base_env.goal_pos
         pygame.draw.rect(screen, (0, 200, 0), (gc * cell, gr * cell, cell, cell))
 
-        # visited dots (light blue)
+        # visited blue dots
         for (r, c) in visited:
-            if (r, c) in (base_env.start_pos, base_env.goal_pos):
-                continue
             cx = c * cell + cell // 2
             cy = r * cell + cell // 2
             pygame.draw.circle(screen, (80, 180, 255), (cx, cy), max(2, cell // 6))
@@ -356,34 +321,23 @@ def main():
         # anim slider
         anim_slider.draw(screen, font, font)
 
-        # edit mode hint
-        if edit_mode:
-            screen.blit(font_big.render("EDIT MODE: ON", True, (255, 210, 90)), (panel_x + 20, 290))
-            screen.blit(font.render("SPACE: toggle edit mode", True, (220, 220, 220)), (panel_x + 20, 315))
-            screen.blit(font.render("Click grid: add GREY wall", True, (220, 220, 220)), (panel_x + 20, 335))
-        else:
-            screen.blit(font_big.render("EDIT MODE: OFF", True, (200, 200, 200)), (panel_x + 20, 305))
-
         show_metrics_btn.draw(screen, font_big)
 
         # live numbers
         y0 = 430
         screen.blit(font_big.render("Current Path Len:", True, (230, 230, 230)), (panel_x + 20, y0))
-        screen.blit(font.render(str(steps), True, (230, 230, 230)), (panel_x + 190, y0 + 3))
+        screen.blit(font.render(str(steps), True, (230, 230, 230)), (panel_x + 180, y0 + 3))
 
         screen.blit(font_big.render("Total Path Length:", True, (230, 230, 230)), (panel_x + 20, y0 + 35))
-        screen.blit(font.render(str(steps), True, (230, 230, 230)), (panel_x + 190, y0 + 38))
+        screen.blit(font.render(str(steps), True, (230, 230, 230)), (panel_x + 180, y0 + 38))
 
         screen.blit(font_big.render("Total Turns:", True, (230, 230, 230)), (panel_x + 20, y0 + 70))
-        screen.blit(font.render(str(turns), True, (230, 230, 230)), (panel_x + 190, y0 + 73))
-
-        screen.blit(font_big.render("User Obstacles:", True, (230, 230, 230)), (panel_x + 20, y0 + 105))
-        screen.blit(font.render(str(len(getattr(base_env, "user_obstacles", set()))), True, (230, 230, 230)), (panel_x + 190, y0 + 108))
+        screen.blit(font.render(str(turns), True, (230, 230, 230)), (panel_x + 180, y0 + 73))
 
         # status
         status = "RUNNING" if running else "STOPPED"
         st_col = (0, 200, 0) if running else (220, 80, 80)
-        screen.blit(font_big.render(status, True, st_col), (panel_x + 20, y0 + 145))
+        screen.blit(font_big.render(status, True, st_col), (panel_x + 20, y0 + 120))
 
         pygame.display.flip()
         clock.tick(60)
